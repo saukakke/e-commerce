@@ -1,21 +1,249 @@
 <?php
+
 namespace App\Http\Controllers;
-use App\Models\{Dispute,GiftCard,GiftCardTransaction,LoyaltyAccount,LoyaltyTransaction,PaymentTransaction,Product,ProductQuestion,PromotionCampaign,RecentlyViewedProduct,ProductComparison,ShippingRate,ShippingZone,Vendor,VendorCommission,VendorPayout,VendorRating,Refund,ReturnRequest,Order};
-use Illuminate\Http\Request;use Illuminate\Support\Facades\DB;use Illuminate\Support\Facades\Http;use Illuminate\Support\Str;
-class PlatformController extends Controller{
-public function view(Product $product){RecentlyViewedProduct::create(['user_id'=>auth()->id(),'session_id'=>session()->getId(),'product_id'=>$product->id,'viewed_at'=>now()]);return redirect()->route('products.show',$product->slug);}
-public function compare(Product $product){ProductComparison::create(['user_id'=>auth()->id(),'session_id'=>session()->getId(),'product_id'=>$product->id]);return back()->with('success','Product added to comparison.');}
-public function comparisons(){return view('shop.compare',['products'=>ProductComparison::where('user_id',auth()->id())->with('product')->latest()->get()->pluck('product')]);}
-public function question(Request $r,Product $product){$d=$r->validate(['question'=>'required|max:2000']);ProductQuestion::create($d+['product_id'=>$product->id,'user_id'=>auth()->id()]);return back()->with('success','Question submitted.');}
-public function dispute(Request $r){$d=$r->validate(['order_id'=>'required|exists:orders,id','subject'=>'required|max:190','description'=>'required|max:5000']);$o=Order::whereKey($d['order_id'])->where('user_id',auth()->id())->firstOrFail();Dispute::create($d+['user_id'=>auth()->id()]);return back()->with('success','Dispute opened.');}
-public function rateVendor(Request $r,Vendor $vendor){$d=$r->validate(['rating'=>'required|integer|min:1|max:5','comment'=>'nullable|max:2000']);VendorRating::updateOrCreate(['vendor_id'=>$vendor->id,'user_id'=>auth()->id(),'order_id'=>$r->integer('order_id')?:null],$d);return back()->with('success','Vendor rating saved.');}
-public function redeemPoints(Request $r){$d=$r->validate(['points'=>'required|integer|min:1']);$a=LoyaltyAccount::firstOrCreate(['user_id'=>auth()->id()]);if($a->points<$d['points'])return back()->with('error','Insufficient points.');DB::transaction(function()use($a,$d){$a->decrement('points',$d['points']);LoyaltyTransaction::create(['loyalty_account_id'=>$a->id,'points'=>-$d['points'],'type'=>'redeem','description'=>'Points redeemed']);});return back()->with('success','Points redeemed.');}
-public function buyGiftCard(Request $r){$d=$r->validate(['amount'=>'required|numeric|min:1000|max:1000000']);$code='GFT-'.strtoupper(Str::random(12));GiftCard::create(['code'=>$code,'initial_value'=>$d['amount'],'balance'=>$d['amount'],'user_id'=>auth()->id()]);return back()->with('success','Gift card created: '.$code);}
-public function vendorApply(Request $r){$d=$r->validate(['business_name'=>'required|max:190','description'=>'nullable|max:3000','phone'=>'required|max:30','address'=>'required|max:255']);if(Vendor::where('user_id',auth()->id())->exists())return back()->with('error','Vendor application already exists.');Vendor::create($d+['user_id'=>auth()->id(),'slug'=>Str::slug($d['business_name']).'-'.Str::lower(Str::random(5))]);return back()->with('success','Vendor application submitted.');}
-public function vendorDashboard(){ $v=Vendor::where('user_id',auth()->id())->firstOrFail();return view('vendor.dashboard',compact('v'));}
-public function vendorPayout(Request $r){$v=Vendor::where('user_id',auth()->id())->firstOrFail();$d=$r->validate(['amount'=>'required|numeric|min:1000','bank_name'=>'required|max:100','account_number'=>'required|max:30','account_name'=>'required|max:190']);if($d['amount']>$v->balance)return back()->with('error','Insufficient vendor balance.');DB::transaction(function()use($v,$d){$v->decrement('balance',$d['amount']);VendorPayout::create($d+['vendor_id'=>$v->id,'reference'=>'PO-'.strtoupper(Str::random(12))]);});return back()->with('success','Payout requested.');}
-public function webhook(Request $r){$signature=$r->header('x-paystack-signature');$secret=config('services.paystack.secret');if(!$secret||!hash_equals(hash_hmac('sha512',$r->getContent(),$secret),$signature??''))abort(401);$data=$r->json('data',[]);$ref=$data['reference']??null;$tx=PaymentTransaction::where('reference',$ref)->first();if(!$tx)return response()->json(['received'=>true]);if(($data['status']??'')==='success'&&$tx->status!=='paid'){$tx->update(['status'=>'paid','payload'=>$data]);$tx->order->update(['payment_status'=>'paid','status'=>'processing','paid_at'=>now()]);}return response()->json(['received'=>true]);}
-public function refund(Request $r,Order $order){$d=$r->validate(['amount'=>'required|numeric|min:.01']);abort_unless($order->user_id===auth()->id()||auth()->user()->isAdmin(),403);abort_if($d['amount']>$order->total,422,'Refund exceeds order total.');$refund=Refund::create(['order_id'=>$order->id,'user_id'=>$order->user_id,'amount'=>$d['amount'],'provider'=>$order->payment_method,'reference'=>'RF-'.strtoupper(Str::random(12)),'reason'=>$r->input('reason'),'status'=>'requested']);if($order->payment_method==='paystack'&&config('services.paystack.secret')){$tx=PaymentTransaction::where('order_id',$order->id)->where('status','paid')->latest()->first();if($tx){$res=Http::withToken(config('services.paystack.secret'))->post('https://api.paystack.co/refund',['transaction'=>$tx->reference,'amount'=>(int)round($d['amount']*100)]);$refund->update(['status'=>$res->successful()?'processed':'failed','payload'=>$res->json()]);}}return back()->with('success','Refund request recorded.');}
-public function faq(){return view('shop.faq',['faqs'=>\App\Models\Faq::where('active',true)->orderBy('sort_order')->get()]);}
-public function analytics(){abort_unless(auth()->user()->isAdmin(),403);$days=collect(range(13,0))->map(fn($i)=>now()->subDays($i)->startOfDay());$sales=$days->map(fn($d)=>['date'=>$d->toDateString(),'revenue'=>Order::where('payment_status','paid')->whereBetween('created_at',[$d,$d->copy()->endOfDay()])->sum('total'),'orders'=>Order::whereBetween('created_at',[$d,$d->copy()->endOfDay()])->count()]);return view('admin.analytics',compact('sales'));}
+
+use App\Models\Dispute;
+use App\Models\GiftCard;
+use App\Models\LoyaltyAccount;
+use App\Models\LoyaltyTransaction;
+use App\Models\Order;
+use App\Models\PaymentTransaction;
+use App\Models\Product;
+use App\Models\ProductComparison;
+use App\Models\ProductQuestion;
+use App\Models\RecentlyViewedProduct;
+use App\Models\Refund;
+use App\Models\Vendor;
+use App\Models\VendorPayout;
+use App\Models\VendorRating;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
+
+class PlatformController extends Controller
+{
+    public function view(Product $product)
+    {
+        RecentlyViewedProduct::updateOrCreate(
+            ['user_id' => auth()->id(), 'session_id' => session()->getId(), 'product_id' => $product->id],
+            ['viewed_at' => now()]
+        );
+
+        return redirect()->route('products.show', $product->slug);
+    }
+
+    public function compare(Product $product)
+    {
+        ProductComparison::firstOrCreate([
+            'user_id' => auth()->id(),
+            'session_id' => session()->getId(),
+            'product_id' => $product->id,
+        ]);
+
+        return back()->with('success', 'Product added to comparison.');
+    }
+
+    public function comparisons()
+    {
+        return view('shop.compare', [
+            'products' => ProductComparison::where('user_id', auth()->id())
+                ->with('product')
+                ->latest()
+                ->get()
+                ->pluck('product'),
+        ]);
+    }
+
+    public function question(Request $request, Product $product)
+    {
+        $data = $request->validate(['question' => ['required', 'string', 'max:2000']]);
+        ProductQuestion::create($data + ['product_id' => $product->id, 'user_id' => auth()->id()]);
+
+        return back()->with('success', 'Question submitted.');
+    }
+
+    public function dispute(Request $request)
+    {
+        $data = $request->validate([
+            'order_id' => ['required', 'integer', 'exists:orders,id'],
+            'subject' => ['required', 'string', 'max:190'],
+            'description' => ['required', 'string', 'max:5000'],
+        ]);
+
+        $order = Order::with('items')->whereKey($data['order_id'])->where('user_id', auth()->id())->firstOrFail();
+        abort_unless(in_array($order->status, ['processing', 'shipped', 'delivered', 'cancelled', 'returned'], true), 422, 'This order cannot be disputed.');
+        abort_if(Dispute::where('order_id', $order->id)->whereIn('status', ['open', 'under_review'])->exists(), 422, 'An active dispute already exists for this order.');
+
+        Dispute::create($data + ['user_id' => auth()->id(), 'status' => 'open']);
+
+        return back()->with('success', 'Dispute opened.');
+    }
+
+    public function rateVendor(Request $request, Vendor $vendor)
+    {
+        $data = $request->validate([
+            'order_id' => ['required', 'integer', 'exists:orders,id'],
+            'rating' => ['required', 'integer', 'min:1', 'max:5'],
+            'comment' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $purchased = DB::table('order_items')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->join('products', 'products.id', '=', 'order_items.product_id')
+            ->where('orders.id', $data['order_id'])
+            ->where('orders.user_id', auth()->id())
+            ->where('products.vendor_id', $vendor->id)
+            ->exists();
+
+        abort_unless($purchased, 403, 'You can only rate vendors for products you purchased.');
+
+        VendorRating::updateOrCreate(
+            ['vendor_id' => $vendor->id, 'user_id' => auth()->id(), 'order_id' => $data['order_id']],
+            ['rating' => $data['rating'], 'comment' => $data['comment'] ?? null]
+        );
+
+        return back()->with('success', 'Vendor rating saved.');
+    }
+
+    public function redeemPoints(Request $request)
+    {
+        $data = $request->validate(['points' => ['required', 'integer', 'min:1']]);
+
+        DB::transaction(function () use ($data) {
+            $account = LoyaltyAccount::where('user_id', auth()->id())->lockForUpdate()->firstOrFail();
+            abort_if($account->points < $data['points'], 422, 'Insufficient points.');
+            $account->decrement('points', $data['points']);
+            LoyaltyTransaction::create([
+                'loyalty_account_id' => $account->id,
+                'points' => -$data['points'],
+                'type' => 'redeem',
+                'description' => 'Points redeemed',
+            ]);
+        });
+
+        return back()->with('success', 'Points redeemed.');
+    }
+
+    public function buyGiftCard(Request $request)
+    {
+        $data = $request->validate(['amount' => ['required', 'numeric', 'min:1000', 'max:1000000']]);
+        $code = 'GFT-'.strtoupper(Str::random(12));
+        GiftCard::create(['code' => $code, 'initial_value' => $data['amount'], 'balance' => $data['amount'], 'user_id' => auth()->id()]);
+
+        return back()->with('success', 'Gift card created: '.$code);
+    }
+
+    public function vendorApply(Request $request)
+    {
+        $data = $request->validate([
+            'business_name' => ['required', 'string', 'max:190'],
+            'description' => ['nullable', 'string', 'max:3000'],
+            'phone' => ['required', 'string', 'max:30'],
+            'address' => ['required', 'string', 'max:255'],
+        ]);
+
+        abort_if(Vendor::where('user_id', auth()->id())->exists(), 422, 'Vendor application already exists.');
+        Vendor::create($data + ['user_id' => auth()->id(), 'slug' => Str::slug($data['business_name']).'-'.Str::lower(Str::random(5)), 'status' => 'pending', 'balance' => 0]);
+
+        return back()->with('success', 'Vendor application submitted.');
+    }
+
+    public function vendorDashboard()
+    {
+        $vendor = Vendor::where('user_id', auth()->id())->where('status', 'approved')->firstOrFail();
+        return view('vendor.dashboard', ['v' => $vendor]);
+    }
+
+    public function vendorPayout(Request $request)
+    {
+        $vendor = Vendor::where('user_id', auth()->id())->where('status', 'approved')->lockForUpdate()->firstOrFail();
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'min:1000'],
+            'bank_name' => ['required', 'string', 'max:100'],
+            'account_number' => ['required', 'string', 'max:30'],
+            'account_name' => ['required', 'string', 'max:190'],
+        ]);
+
+        DB::transaction(function () use ($vendor, $data) {
+            $pending = VendorPayout::where('vendor_id', $vendor->id)->whereIn('status', ['requested', 'processing'])->sum('amount');
+            abort_if($data['amount'] > ($vendor->balance - $pending), 422, 'Insufficient available vendor balance.');
+            VendorPayout::create($data + ['vendor_id' => $vendor->id, 'reference' => 'PO-'.strtoupper(Str::random(12)), 'status' => 'requested']);
+        });
+
+        return back()->with('success', 'Payout request submitted for approval.');
+    }
+
+    public function webhook(Request $request)
+    {
+        $secret = config('services.paystack.secret');
+        $signature = $request->header('x-paystack-signature');
+        abort_unless($secret && $signature && hash_equals(hash_hmac('sha512', $request->getContent(), $secret), $signature), 401);
+
+        $data = $request->json('data', []);
+        $reference = $data['reference'] ?? null;
+        if (!$reference) return response()->json(['received' => true]);
+
+        DB::transaction(function () use ($reference, $data) {
+            $transaction = PaymentTransaction::where('reference', $reference)->lockForUpdate()->first();
+            if (!$transaction || $transaction->status === 'paid') return;
+            if (($data['status'] ?? '') !== 'success') {
+                $transaction->update(['payload' => $data]);
+                return;
+            }
+
+            $transaction->update(['status' => 'paid', 'payload' => $data]);
+            $transaction->order()->lockForUpdate()->first()->update(['payment_status' => 'paid', 'status' => 'processing', 'paid_at' => now()]);
+        });
+
+        return response()->json(['received' => true]);
+    }
+
+    public function refund(Request $request, Order $order)
+    {
+        abort_unless($order->user_id === auth()->id() || auth()->user()->isAdmin(), 403);
+        abort_unless($order->payment_status === 'paid', 422, 'Only paid orders can be refunded.');
+        $data = $request->validate(['amount' => ['required', 'numeric', 'min:0.01'], 'reason' => ['nullable', 'string', 'max:1000']]);
+        $alreadyRefunded = Refund::where('order_id', $order->id)->whereIn('status', ['requested', 'processed'])->sum('amount');
+        abort_if($alreadyRefunded + $data['amount'] > $order->total, 422, 'Refund exceeds the remaining refundable amount.');
+
+        $refund = Refund::create([
+            'order_id' => $order->id,
+            'user_id' => $order->user_id,
+            'amount' => $data['amount'],
+            'provider' => $order->payment_method,
+            'reference' => 'RF-'.strtoupper(Str::random(12)),
+            'reason' => $data['reason'] ?? null,
+            'status' => 'requested',
+        ]);
+
+        if ($order->payment_method === 'paystack' && config('services.paystack.secret')) {
+            $transaction = PaymentTransaction::where('order_id', $order->id)->where('status', 'paid')->latest()->first();
+            if ($transaction) {
+                $response = Http::withToken(config('services.paystack.secret'))->post('https://api.paystack.co/refund', ['transaction' => $transaction->reference, 'amount' => (int) round($data['amount'] * 100)]);
+                $refund->update(['status' => $response->successful() ? 'processed' : 'failed', 'payload' => $response->json()]);
+                if ($response->successful() && (float) $data['amount'] >= (float) $order->total) $order->update(['payment_status' => 'refunded', 'status' => 'refunded']);
+            }
+        }
+
+        return back()->with('success', 'Refund request recorded.');
+    }
+
+    public function faq()
+    {
+        return view('shop.faq', ['faqs' => \App\Models\Faq::where('active', true)->orderBy('sort_order')->get()]);
+    }
+
+    public function analytics()
+    {
+        abort_unless(auth()->user()->isAdmin(), 403);
+        $days = collect(range(13, 0))->map(fn ($i) => now()->subDays($i)->startOfDay());
+        $sales = $days->map(fn ($day) => [
+            'date' => $day->toDateString(),
+            'revenue' => Order::where('payment_status', 'paid')->whereBetween('created_at', [$day, $day->copy()->endOfDay()])->sum('total'),
+            'orders' => Order::whereBetween('created_at', [$day, $day->copy()->endOfDay()])->count(),
+        ]);
+
+        return view('admin.analytics', compact('sales'));
+    }
 }
