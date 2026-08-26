@@ -1,0 +1,1 @@
+<?php namespace App\Models; use Illuminate\Database\Eloquent\Model; class ShippingRate extends Model{protected $fillable=['shipping_zone_id','courier','rate','min_weight','max_weight','estimated_days','active'];protected $casts=['rate'=>'decimal:2','active'=>'boolean'];public function zone(){return $this->belongsTo(ShippingZone::class);}}

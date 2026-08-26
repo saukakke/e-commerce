@@ -1,7 +1,1 @@
-<?php
-
-use Illuminate\Support\Facades\Artisan;
-
-Artisan::command('shoply:status', function () {
-    $this->info('Shoply e-commerce MVP is ready.');
-})->purpose('Check Shoply application status');
+<?php use Illuminate\Support\Facades\Schedule;Schedule::command('shoply:abandoned-carts')->hourly();Schedule::command('shoply:vendor-commissions')->daily();Schedule::command('shoply:loyalty')->daily();

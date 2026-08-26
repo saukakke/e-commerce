@@ -1,0 +1,1 @@
+<?php namespace App\Models;use Illuminate\Database\Eloquent\Model;class AbandonedCartReminder extends Model{protected $fillable=['abandoned_cart_id','channel','sent_at'];protected $casts=['sent_at'=>'datetime'];public function cart(){return $this->belongsTo(AbandonedCart::class,'abandoned_cart_id');}}
