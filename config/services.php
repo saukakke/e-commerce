@@ -1,0 +1,1 @@
+<?php return ['paystack'=>['secret'=>env('PAYSTACK_SECRET_KEY'),'public'=>env('PAYSTACK_PUBLIC_KEY')],'mailgun'=>['domain'=>env('MAILGUN_DOMAIN'),'secret'=>env('MAILGUN_SECRET')],'sms'=>['provider'=>env('SMS_PROVIDER'),'api_key'=>env('SMS_API_KEY')]];

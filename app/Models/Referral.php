@@ -1,0 +1,1 @@
+<?php namespace App\Models;use Illuminate\Database\Eloquent\Model;class Referral extends Model{protected $fillable=['referrer_id','referred_id','code','reward_points','completed_at'];protected $casts=['completed_at'=>'datetime'];public function referrer(){return $this->belongsTo(User::class,'referrer_id');}}

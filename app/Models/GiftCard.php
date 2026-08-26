@@ -1,0 +1,1 @@
+<?php namespace App\Models; use Illuminate\Database\Eloquent\Model; class GiftCard extends Model{protected $fillable=['code','initial_value','balance','user_id','expires_at','active'];protected $casts=['initial_value'=>'decimal:2','balance'=>'decimal:2','expires_at'=>'datetime','active'=>'boolean'];}

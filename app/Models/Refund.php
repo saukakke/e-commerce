@@ -1,0 +1,1 @@
+<?php namespace App\Models; use Illuminate\Database\Eloquent\Model; class Refund extends Model{protected $fillable=['order_id','user_id','return_id','amount','provider','reference','status','reason','payload'];protected $casts=['amount'=>'decimal:2','payload'=>'array'];public function order(){return $this->belongsTo(Order::class);}}

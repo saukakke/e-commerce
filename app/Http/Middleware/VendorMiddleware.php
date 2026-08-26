@@ -1,0 +1,1 @@
+<?php namespace App\Http\Middleware;use Closure;use Illuminate\Http\Request;class VendorMiddleware{public function handle(Request $request,Closure $next){abort_unless($request->user()?->isVendor(),403);return $next($request);}}

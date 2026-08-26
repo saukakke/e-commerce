@@ -1,0 +1,1 @@
+<?php namespace App\Models;use Illuminate\Database\Eloquent\Model;class AbandonedCart extends Model{protected $fillable=['user_id','session_id','items','reminded_at'];protected $casts=['items'=>'array','reminded_at'=>'datetime'];public function reminders(){return $this->hasMany(AbandonedCartReminder::class);}}

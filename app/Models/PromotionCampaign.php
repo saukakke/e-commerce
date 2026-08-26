@@ -1,0 +1,1 @@
+<?php namespace App\Models; use Illuminate\Database\Eloquent\Model; class PromotionCampaign extends Model{protected $fillable=['name','type','value','product_id','category_id','starts_at','ends_at','active'];protected $casts=['value'=>'decimal:2','starts_at'=>'datetime','ends_at'=>'datetime','active'=>'boolean'];}

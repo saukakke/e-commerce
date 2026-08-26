@@ -1,0 +1,1 @@
+<?php use Illuminate\Support\Facades\Schedule;Schedule::command('shoply:abandoned-carts')->hourly();Schedule::command('shoply:vendor-commissions')->daily();Schedule::command('shoply:loyalty')->daily();
