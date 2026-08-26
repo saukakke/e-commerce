@@ -1,1 +1,12 @@
-<?php namespace App\Models; use Illuminate\Database\Eloquent\Model; class VendorPayout extends Model{protected $fillable=['vendor_id','amount','status','reference','bank_name','account_number','account_name','paid_at'];protected $casts=['amount'=>'decimal:2','paid_at'=>'datetime'];public function vendor(){return $this->belongsTo(Vendor::class);}}
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class VendorPayout extends Model
+{
+    protected $fillable=['vendor_id','amount','status','reference','bank_name','account_number','account_name','paid_at','rejection_reason'];
+    protected $casts=['amount'=>'decimal:2','paid_at'=>'datetime'];
+    public function vendor(){return $this->belongsTo(Vendor::class);}
+}
