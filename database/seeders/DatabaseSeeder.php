@@ -1,20 +1,4 @@
 <?php
-
 namespace Database\Seeders;
-
-use App\Models\Category;
-use App\Models\Product;
-use Illuminate\Database\Seeder;
-use Illuminate\Support\Str;
-
-class DatabaseSeeder extends Seeder
-{
-    public function run(): void
-    {
-        $categories=['Electronics','Fashion','Home & Living','Beauty'];
-        foreach($categories as $name){
-            $category=Category::create(['name'=>$name,'slug'=>Str::slug($name),'description'=>'Quality '.$name.' products.']);
-            for($i=1;$i<=4;$i++) Product::create(['category_id'=>$category->id,'name'=>$name.' Product '.$i,'slug'=>Str::slug($name.' Product '.$i), 'sku'=>strtoupper(Str::random(8)), 'description'=>'A carefully selected '.$name.' item for everyday use.','price'=>rand(30,300)*1000,'discount_price'=>$i%2===0?rand(20,250)*1000:null,'stock'=>rand(5,50),'image'=>'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=900','featured'=>$i===1]);
-        }
-    }
-}
+use App\Models\Category; use App\Models\Coupon; use App\Models\Product; use App\Models\User; use Illuminate\Database\Seeder; use Illuminate\Support\Facades\Hash; use Illuminate\Support\Str;
+class DatabaseSeeder extends Seeder { public function run():void { $admin=User::firstOrCreate(['email'=>'admin@shoply.test'],['name'=>'Shoply Admin','password'=>Hash::make('Admin@12345'),'role'=>'admin','phone'=>'08000000000']); $customer=User::firstOrCreate(['email'=>'customer@shoply.test'],['name'=>'Demo Customer','password'=>Hash::make('Customer@12345'),'role'=>'customer']); $categories=['Electronics','Fashion','Home & Living','Beauty']; foreach($categories as $name){$category=Category::firstOrCreate(['slug'=>Str::slug($name)],['name'=>$name,'description'=>'Curated '.$name.' products.','status'=>true]);for($i=1;$i<=4;$i++){Product::firstOrCreate(['sku'=>strtoupper(substr(Str::slug($name),0,3)).$i.'001'],['category_id'=>$category->id,'name'=>$name.' Product '.$i,'slug'=>Str::slug($name.' Product '.$i).'-'.$i,'description'=>'A carefully selected '.$name.' item for everyday use.','price'=>rand(30,300)*1000,'discount_price'=>$i%2===0?rand(20,250)*1000:null,'stock'=>rand(5,50),'image'=>'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=900','featured'=>$i===1,'status'=>true]);}} Coupon::firstOrCreate(['code'=>'WELCOME10'],['type'=>'percent','value'=>10,'minimum_order'=>50000,'usage_limit'=>100,'active'=>true]); } }
