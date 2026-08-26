@@ -4,7 +4,6 @@ use Illuminate\Support\Str;
 
 return [
     'default' => env('DB_CONNECTION', 'mysql'),
-
     'connections' => [
         'sqlite' => [
             'driver' => 'sqlite',
@@ -13,7 +12,6 @@ return [
             'prefix' => '',
             'foreign_key_constraints' => true,
         ],
-
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DATABASE_URL'),
@@ -29,13 +27,8 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-            'options' => extension_loaded('pdo_mysql')
-                ? array_filter([
-                    PDO::ATTR_EMULATE_PREPARES => false,
-                ])
-                : [],
+            'options' => extension_loaded('pdo_mysql') ? array_filter([PDO::ATTR_EMULATE_PREPARES => false]) : [],
         ],
-
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DATABASE_URL'),
@@ -53,12 +46,10 @@ return [
             'engine' => null,
         ],
     ],
-
     'migrations' => [
         'table' => 'migrations',
         'update_date_on_publish' => true,
     ],
-
     'redis' => [
         'client' => env('REDIS_CLIENT', 'phpredis'),
         'options' => [
