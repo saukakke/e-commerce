@@ -1,14 +1,22 @@
-<?php namespace App\Http\Controllers; use App\Models\AuditLog;use App\Models\LoyaltyAccount;use App\Models\ReturnRequest;use App\Models\SupportTicket;use App\Models\Order;use Illuminate\Http\Request;use Illuminate\Support\Str;
-class AdvancedCommerceController extends Controller{
-public function returns(){return view('account.returns',['returns'=>ReturnRequest::where('user_id',auth()->id())->latest()->get(),'orders'=>Order::where('user_id',auth()->id())->whereIn('status',['delivered','processing'])->latest()->get()]);}
-public function requestReturn(Request $r){$d=$r->validate(['order_id'=>'required|exists:orders,id','reason'=>'required|max:150','description'=>'nullable|max:2000']);$order=Order::where('id',$d['order_id'])->where('user_id',auth()->id())->firstOrFail();abort_unless(in_array($order->status,['delivered','processing']),422,'This order cannot be returned.');ReturnRequest::create(['order_id'=>$order->id,'user_id'=>auth()->id(),'reason'=>$d['reason'],'description'=>$d['description']??null,'refund_amount'=>$order->total]);return back()->with('success','Return request submitted.');}
-public function support(){return view('account.support',['tickets'=>SupportTicket::where('user_id',auth()->id())->latest()->get()]);}
-public function ticket(Request $r){$d=$r->validate(['subject'=>'required|max:190','message'=>'required|max:5000','priority'=>'required|in:low,normal,high']);SupportTicket::create($d+['user_id'=>auth()->id()]);return back()->with('success','Support ticket submitted.');}
-public function loyalty(){ $account=LoyaltyAccount::firstOrCreate(['user_id'=>auth()->id()]);return view('account.loyalty',compact('account'));}
-public function referral(){ $code=Str::upper(Str::substr(hash('sha256',auth()->id().'shoply'),0,10));return view('account.referral',compact('code'));}
-public function adminReturns(){return view('admin.returns',['returns'=>ReturnRequest::with(['user','order'])->latest()->paginate(20)]);}
-public function adminTickets(){return view('admin.tickets',['tickets'=>SupportTicket::with('user')->latest()->paginate(20)]);}
-public function updateReturn(Request $r,ReturnRequest $return){$d=$r->validate(['status'=>'required|in:requested,approved,rejected,refunded']);$return->update($d);AuditLog::create(['user_id'=>auth()->id(),'action'=>'return.updated','auditable_type'=>ReturnRequest::class,'auditable_id'=>$return->id,'metadata'=>$d,'ip_address'=>$r->ip()]);return back()->with('success','Return request updated.');}
-public function updateTicket(Request $r,SupportTicket $ticket){$d=$r->validate(['status'=>'required|in:open,in_progress,resolved,closed','admin_reply'=>'nullable|max:5000']);$ticket->update($d);AuditLog::create(['user_id'=>auth()->id(),'action'=>'ticket.updated','auditable_type'=>SupportTicket::class,'auditable_id'=>$ticket->id,'metadata'=>$d,'ip_address'=>$r->ip()]);return back()->with('success','Ticket updated.');}
-public function audit(){return view('admin.audit',['logs'=>AuditLog::with('user')->latest()->paginate(30)]);}
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\{AuditLog,LoyaltyAccount,Order,ReturnRequest,SupportTicket};
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+
+class AdvancedCommerceController extends Controller
+{
+    public function returns(){return view('account.returns',['returns'=>ReturnRequest::where('user_id',auth()->id())->latest()->get(),'orders'=>Order::where('user_id',auth()->id())->whereIn('status',['delivered','processing'])->latest()->get()]);}
+    public function requestReturn(Request $r){$d=$r->validate(['order_id'=>'required|exists:orders,id','reason'=>'required|max:150','description'=>'nullable|max:2000']);$order=Order::whereKey($d['order_id'])->where('user_id',auth()->id())->firstOrFail();abort_unless(in_array($order->status,['delivered','processing'],true),422,'This order cannot be returned.');abort_if(ReturnRequest::where('order_id',$order->id)->whereIn('status',['requested','approved'])->exists(),422,'A return request already exists for this order.');ReturnRequest::create(['order_id'=>$order->id,'user_id'=>auth()->id(),'reason'=>$d['reason'],'description'=>$d['description']??null,'refund_amount'=>$order->total,'status'=>'requested']);return back()->with('success','Return request submitted.');}
+    public function support(){return view('account.support',['tickets'=>SupportTicket::where('user_id',auth()->id())->latest()->get()]);}
+    public function ticket(Request $r){$d=$r->validate(['subject'=>'required|max:190','message'=>'required|max:5000','priority'=>'required|in:low,normal,high']);SupportTicket::create($d+['user_id'=>auth()->id(),'status'=>'open']);return back()->with('success','Support ticket submitted.');}
+    public function loyalty(){ $account=LoyaltyAccount::firstOrCreate(['user_id'=>auth()->id()]);return view('account.loyalty',compact('account'));}
+    public function referral(){ $user=auth()->user();if(!$user->referral_code){$user->update(['referral_code'=>Str::upper(Str::random(10))]);}$code=$user->referral_code;return view('account.referral',compact('code'));}
+    public function adminReturns(){return view('admin.returns',['returns'=>ReturnRequest::with(['user','order'])->latest()->paginate(20)]);}
+    public function adminTickets(){return view('admin.tickets',['tickets'=>SupportTicket::with('user')->latest()->paginate(20)]);}
+    public function updateReturn(Request $r,ReturnRequest $return){$d=$r->validate(['status'=>'required|in:requested,approved,rejected,refunded']);if($d['status']==='refunded')abort_unless($return->status==='approved',422,'Only approved returns can be refunded.');$return->update($d);AuditLog::create(['user_id'=>auth()->id(),'action'=>'return.updated','auditable_type'=>ReturnRequest::class,'auditable_id'=>$return->id,'metadata'=>$d,'ip_address'=>$r->ip()]);return back()->with('success','Return request updated.');}
+    public function updateTicket(Request $r,SupportTicket $ticket){$d=$r->validate(['status'=>'required|in:open,in_progress,resolved,closed','admin_reply'=>'nullable|max:5000']);$ticket->update($d);AuditLog::create(['user_id'=>auth()->id(),'action'=>'ticket.updated','auditable_type'=>SupportTicket::class,'auditable_id'=>$ticket->id,'metadata'=>$d,'ip_address'=>$r->ip()]);return back()->with('success','Ticket updated.');}
+    public function audit(){return view('admin.audit',['logs'=>AuditLog::with('user')->latest()->paginate(30)]);}
 }
